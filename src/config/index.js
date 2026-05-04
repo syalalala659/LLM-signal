@@ -27,13 +27,15 @@ const config = {
     intervalMinutes: parseInt(process.env.INTERVAL_MINUTES || '5'),
     logLevel: process.env.LOG_LEVEL || 'info',
     nodeEnv: process.env.NODE_ENV || 'development',
-    scheduleEnabled: process.env.SCHEDULE_MODE === 'true' || process.env.SCHEDULE_MODE === 'true',
-    useTop100: process.env.USE_TOP_100 === 'true' || process.env.USE_TOP_100 === true
+    scheduleEnabled: process.env.SCHEDULE_MODE === 'true' || process.env.SCHEDULE_MODE === true,
+    useTopCoins: process.env.USE_TOP_COINS === 'true' || process.env.USE_TOP_COINS === true,
+    topCoinsLimit: parseInt(process.env.TOP_COINS_LIMIT || '50'),
+    topSignalsToSend: parseInt(process.env.TOP_SIGNALS_TO_SEND || '5')
   },
 
   // Crypto Settings
   crypto: {
-    symbols: (process.env.CRYPTO_SYMBOLS || 'BTC/USD,ETH/USD,SOL/USD').split(','),
+    symbols: (process.env.CRYPTO_SYMBOLS || 'BTC/USD,ETH/USD,SOL/USD').split(',').map(s => s.trim()),
   },
 
   // Technical Indicators

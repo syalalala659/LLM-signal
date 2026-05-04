@@ -12,21 +12,28 @@ class TradingAgent {
     this.lastSignals = {};
     this.interval = null;
     this.currentSymbols = [];
+    this.totalAnalyzed = 0;
+    this.signalStats = {
+      long: 0,
+      short: 0,
+      neutral: 0,
+      avgConfidence: 0
+    };
   }
 
   /**
-   * Initialize symbols (load from config or CoinGecko top 100)
+   * Initialize symbols (load from config or CoinGecko top N)
    */
   async initializeSymbols() {
     try {
-      if (config.app.useTop100 === 'true' || config.app.useTop100 === true) {
-        logger.info('\ud83d\udd04 Loading top 100 tokens from CoinGecko...');
-        this.currentSymbols = await coingeckoClient.getTop100Symbols(100);
+      if (config.app.useTopCoins === 'true' || config.app.useTopCoins === true) {
+        logger.info(`🔄 Loading top ${config.app.topCoinsLimit} coins from CoinGecko...`);
+        this.currentSymbols = await coingeckoClient.getTop100Symbols(config.app.topCoinsLimit);
       } else {
         this.currentSymbols = config.crypto.symbols;
-        logger.info(`\ud83d\udcab Using configured symbols: ${this.currentSymbols.join(', ')}`);
+        logger.info(`🎯 Using configured symbols: ${this.currentSymbols.join(', ')}`);
       }
-      logger.info(`\u2705 Initialized ${this.currentSymbols.length} trading symbols`);
+      logger.info(`✅ Initialized ${this.currentSymbols.length} trading symbols`);
     } catch (error) {
       logger.error('Error initializing symbols:', error.message);
       // Fallback to configured symbols
@@ -40,7 +47,7 @@ class TradingAgent {
    */
   async start() {
     this.running = true;
-    logger.info('\ud83d\ude80 Trading Agent started');
+    logger.info('🚀 Trading Agent started');
     
     // Initialize symbols
     await this.initializeSymbols();
@@ -55,7 +62,7 @@ class TradingAgent {
       // Schedule periodic analysis (for interval mode)
       const intervalMs = config.app.intervalMinutes * 60 * 1000;
       this.interval = setInterval(() => this.runAnalysis(), intervalMs);
-      logger.info(`\u23f0 Interval-based analysis scheduled every ${config.app.intervalMinutes} minutes`);
+      logger.info(`⏰ Interval-based analysis scheduled every ${config.app.intervalMinutes} minutes`);
     }
   }
 
@@ -65,7 +72,7 @@ class TradingAgent {
   async stop() {
     this.running = false;
     if (this.interval) clearInterval(this.interval);
-    logger.info('\ud83d\uded1 Trading Agent stopped');
+    logger.info('🛑 Trading Agent stopped');
   }
 
   /**
@@ -75,10 +82,9 @@ class TradingAgent {
   async runAnalysis(overrideSymbols = null) {
     try {
       const symbols = overrideSymbols || this.currentSymbols || config.crypto.symbols;
-      logger.info(`\ud83d\udcca Running market analysis for ${symbols.length} symbols...`);
+      logger.info(`📊 Running market analysis for ${symbols.length} symbols...`);
       const signals = [];
       const errors = [];
-      let successCount = 0;
 
       // Analyze in batches to avoid API rate limits
       const batchSize = 5;
@@ -94,25 +100,49 @@ class TradingAgent {
         }
       }
 
-      successCount = signals.length;
+      this.totalAnalyzed = signals.length;
+      const successCount = signals.length;
       const failureCount = errors.length;
 
-      logger.info(`\u2705 Analysis completed: ${successCount} successful, ${failureCount} failed`);
+      logger.info(`✅ Analysis completed: ${successCount} successful, ${failureCount} failed`);
+
+      // Calculate stats before filtering
+      this.calculateStats(signals);
+
+      // Filter top signals
+      const topSignals = this.getTopSignals(signals, config.app.topSignalsToSend);
+      logger.info(`🔝 Top ${topSignals.length} signals selected from ${signals.length} total signals`);
+
+      // Send individual signals
+      if (topSignals.length > 0) {
+        for (const signal of topSignals) {
+          // Find full signal data
+          const fullSignal = signals.find(s => s.symbol === signal.symbol);
+          if (fullSignal) {
+            const priceData = await twelvedataClient.getPriceData(signal.symbol, 100);
+            const indicators = TechnicalAnalysis.analyzeIndicators(priceData, config);
+            await telegramNotifier.sendSignal(signal.symbol, fullSignal, indicators);
+            logger.info(`📤 Sent signal to Telegram for ${signal.symbol}`);
+            // Add delay between messages
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
 
       // Send market summary
       if (signals.length > 0) {
-        await telegramNotifier.sendMarketSummary(signals);
+        await telegramNotifier.sendMarketSummary(signals, topSignals, this.signalStats);
       }
 
       if (errors.length > 0) {
         logger.warn(`⚠️ Errors during analysis:`, errors.slice(0, 5));
       }
 
-      return { successCount, failureCount, signals };
+      return { successCount, failureCount, topSignalsCount: topSignals.length, signals };
     } catch (error) {
       logger.error('Error in analysis loop:', error.message);
       await telegramNotifier.sendError('Analysis Loop Error', error.message);
-      return { successCount: 0, failureCount: 1, signals: [] };
+      return { successCount: 0, failureCount: 1, topSignalsCount: 0, signals: [] };
     }
   }
 
@@ -133,27 +163,40 @@ class TradingAgent {
       const signal = await openrouterClient.generateTradingSignal(symbol, indicators);
       logger.debug(`Signal generated for ${symbol}: ${signal.signal}`);
 
-      // Check if signal is different from last one (to avoid spam)
-      const shouldNotify = this.shouldNotifySignal(symbol, signal);
-
-      if (shouldNotify) {
-        // Send to Telegram
-        await telegramNotifier.sendSignal(symbol, signal, indicators);
-        logger.info(`✅ Signal sent for ${symbol}: ${signal.signal}`);
-      }
-
       // Store signal
       this.lastSignals[symbol] = signal;
-      signals.push({ symbol, ...signal });
+      signals.push({ symbol, indicators, ...signal });
     } catch (error) {
       logger.error(`Error analyzing ${symbol}:`, error.message);
       errors.push({ symbol, error: error.message });
-      // Don't send individual error for each symbol in batch mode
     }
   }
 
   /**
-   * Check if signal should be notified (avoid spam)
+   * Calculate signal statistics
+   */
+  calculateStats(signals) {
+    this.signalStats = {
+      long: signals.filter(s => s.signal === 'LONG').length,
+      short: signals.filter(s => s.signal === 'SHORT').length,
+      neutral: signals.filter(s => s.signal === 'NEUTRAL').length,
+      avgConfidence: signals.length > 0 
+        ? (signals.reduce((sum, s) => sum + s.confidence, 0) / signals.length).toFixed(2)
+        : 0
+    };
+  }
+
+  /**
+   * Get top N signals sorted by confidence
+   */
+  getTopSignals(signals, topN) {
+    return signals
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, topN);
+  }
+
+  /**
+   * Check if signal is different from last one (avoid spam)
    * @param {string} symbol - Trading symbol
    * @param {Object} newSignal - New signal
    * @returns {boolean} Whether to notify
@@ -188,11 +231,14 @@ class TradingAgent {
     return {
       running: this.running,
       monitoredSymbols: this.currentSymbols.length,
-      symbolsList: this.currentSymbols.slice(0, 10), // Show first 10
+      symbolsList: this.currentSymbols.slice(0, 10),
       lastSignalsCount: Object.keys(this.lastSignals).length,
+      totalAnalyzed: this.totalAnalyzed,
+      signalStats: this.signalStats,
+      topSignalsToSend: config.app.topSignalsToSend,
       intervalMinutes: config.app.intervalMinutes,
       environment: config.app.nodeEnv,
-      useTop100: config.app.useTop100
+      useTopCoins: config.app.useTopCoins
     };
   }
 }
