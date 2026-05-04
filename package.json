@@ -1,0 +1,37 @@
+{
+  "name": "llm-signal",
+  "version": "1.0.0",
+  "description": "AI Agent for Crypto Trading Signals with LLM Analysis",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "crypto",
+    "trading",
+    "signals",
+    "llm",
+    "ai",
+    "bitcoin",
+    "ethereum"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "node-talib": "^1.0.7",
+    "ccxt": "^4.0.0",
+    "winston": "^3.11.0",
+    "node-telegram-bot-api": "^0.61.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0",
+    "npm": ">=6.0.0"
+  }
+}
