@@ -26,7 +26,9 @@ const config = {
   app: {
     intervalMinutes: parseInt(process.env.INTERVAL_MINUTES || '5'),
     logLevel: process.env.LOG_LEVEL || 'info',
-    nodeEnv: process.env.NODE_ENV || 'development'
+    nodeEnv: process.env.NODE_ENV || 'development',
+    scheduleEnabled: process.env.SCHEDULE_MODE === 'true' || process.env.SCHEDULE_MODE === 'true',
+    useTop100: process.env.USE_TOP_100 === 'true' || process.env.USE_TOP_100 === true
   },
 
   // Crypto Settings

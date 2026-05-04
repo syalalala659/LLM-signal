@@ -1,7 +1,7 @@
 {
   "name": "llm-signal",
-  "version": "1.0.0",
-  "description": "AI Agent for Crypto Trading Signals with LLM Analysis",
+  "version": "2.0.0",
+  "description": "AI Agent for Crypto Trading Signals with LLM Analysis - Support for Top 100 tokens with scheduled signals",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -15,7 +15,9 @@
     "llm",
     "ai",
     "bitcoin",
-    "ethereum"
+    "ethereum",
+    "top-100",
+    "scheduled"
   ],
   "author": "",
   "license": "MIT",
@@ -24,6 +26,7 @@
     "dotenv": "^16.3.1",
     "node-talib": "^1.0.7",
     "ccxt": "^4.0.0",
+    "node-cron": "^3.0.2",
     "winston": "^3.11.0",
     "node-telegram-bot-api": "^0.61.0"
   },

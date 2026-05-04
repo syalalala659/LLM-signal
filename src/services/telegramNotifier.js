@@ -44,7 +44,7 @@ class TelegramNotifier {
 
     return `
 <b>${signalEmoji} ${signal.signal} SIGNAL - ${symbol}</b>
-━━━━━━━━━━━━━━━━━━━━━━
+─────────────────────────────────
 <b>⏰ Time:</b> ${timestamp}
 
 <b>💰 Price Action:</b>
@@ -69,21 +69,36 @@ class TelegramNotifier {
 • Note: ${signal.analysis}
 
 <i>⚠️ Always do your own research. This is not financial advice.</i>
-━━━━━━━━━━━━━━━━━━━━━━
+─────────────────────────────────
     `;
   }
 
   /**
    * Send startup notification
+   * @param {number} symbolCount - Number of symbols being monitored
    */
-  async sendStartupMessage() {
+  async sendStartupMessage(symbolCount = 100) {
     try {
-      const symbols = config.crypto.symbols.join(', ');
+      const scheduleMode = process.env.SCHEDULE_MODE === 'true';
+      const scheduleHours = process.env.SCHEDULE_HOURS || '7,19';
+      const useTop100 = process.env.USE_TOP_100 === 'true';
+      
+      let modeInfo = '';
+      if (scheduleMode) {
+        const hours = scheduleHours.split(',').map(h => `${h.trim()}:00`).join(', ');
+        modeInfo = `\n⏰ Mode: Scheduled (2x daily at ${hours})`;
+      } else {
+        const interval = process.env.INTERVAL_MINUTES || 5;
+        modeInfo = `\n⏰ Mode: Continuous (every ${interval} minutes)`;
+      }
+      
+      const tokenInfo = useTop100 ? '\n💯 Analyzing: Top 100 tokens' : `\n💯 Analyzing: ${symbolCount} configured tokens`;
+      
       const message = `
 <b>✅ AI Trading Signal Agent Started</b>
 
-📍 Monitoring: ${symbols}
-⏱️ Interval: ${config.app.intervalMinutes} minutes
+📊 Monitoring: ${symbolCount} tokens
+${tokenInfo}${modeInfo}
 🤖 Model: ${config.openrouter.model}
 
 <i>Signals will be sent automatically...</i>
@@ -130,16 +145,28 @@ class TelegramNotifier {
       const neutralCount = signals.filter(s => s.signal === 'NEUTRAL').length;
       const avgConfidence = (signals.reduce((sum, s) => sum + s.confidence, 0) / signals.length).toFixed(2);
 
+      // Group top signals by confidence
+      const topSignals = signals
+        .sort((a, b) => b.confidence - a.confidence)
+        .slice(0, 5)
+        .map(s => `• ${s.signal === 'LONG' ? '🟢' : s.signal === 'SHORT' ? '🔴' : '⚪'} ${s.symbol}: <b>${s.signal}</b> (${s.confidence}%)`)
+        .join('\n');
+
       const message = `
 <b>📊 Market Summary</b>
-━━━━━━━━━━━━━━━━━━━━━━
+─────────────────────────────────
 🟢 LONG Signals: <b>${longCount}</b>
 🔴 SHORT Signals: <b>${shortCount}</b>
 ⚪ NEUTRAL Signals: <b>${neutralCount}</b>
 
 📈 Average Confidence: <b>${avgConfidence}%</b>
+⏱️ Total Signals: <b>${signals.length}</b>
+
+<b>🔝 Top Signals:</b>
+${topSignals}
+
 ⏰ Updated: ${new Date().toLocaleString()}
-━━━━━━━━━━━━━━━━━━━━━━
+─────────────────────────────────
       `;
       await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
       logger.info('Market summary sent to Telegram');
